@@ -154,6 +154,8 @@ void ZeroRemoteTensor::allocate(const size_t bytes) {
                                                              utils::STANDARD_PAGE_SIZE,
                                                              _tensor_type == TensorType::INPUT ? true : false);
         _data = _host_memory->data();
+        std::cerr << "copying data to " << _data << "from " << _mem;
+        std::memcpy(_data, _mem, bytes);
         break;
     }
     case MemType::SHARED_BUF: {
@@ -242,5 +244,10 @@ void* ZeroRemoteTensor::get_original_memory() const {
 ze_context_handle_t ZeroRemoteTensor::get_zero_context_handle() const {
     return _init_structs->getContext();
 }
+
+ void ZeroRemoteTensor::copy_to(const std::shared_ptr<ov::ITensor>& dst, size_t src_offset, size_t dst_offset, const ov::Shape& roi_shape) const {
+    std::cerr << "copying zero tensor size " << _size << std::endl;
+    std::memcpy(reinterpret_cast<void*>(dst->data()), reinterpret_cast<void*>(_data), _size);
+ }
 
 }  // namespace intel_npu

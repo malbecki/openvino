@@ -15,7 +15,20 @@
 #include "intel_npu/utils/zero/zero_remote_tensor.hpp"
 #include "intel_npu/utils/zero/zero_types.hpp"
 
+namespace {
+    template <typename Type>
+    std::optional<Type> extract_object(const ov::AnyMap& params, const ov::Property<Type>& p) {
+        auto itrHandle = params.find(p.name());
+        if (itrHandle == params.end()) {
+            return std::nullopt;
+        }
+
+        return ov::Any(itrHandle->second).as<Type>();
+    }
+}
+
 namespace intel_npu {
+    
 Pipeline::Pipeline(const Config& config,
                    const std::shared_ptr<ZeroInitStructsHolder>& init_structs,
                    const std::shared_ptr<IGraph>& graph,
@@ -28,6 +41,7 @@ Pipeline::Pipeline(const Config& config,
       _id(_graph->get_unique_id()),
       _number_of_command_lists(batch_size),
       _logger("Pipeline", _config.get<LOG_LEVEL>()) {
+    std::cerr << "Initializing pipeline\n";
     OV_ITT_SCOPED_TASK(itt::domains::LevelZeroBackend, "Zero_infer_request::Pipeline::Pipeline");
 
     _logger.debug("Pipeline - initialize started, number_of_command_lists %i", _number_of_command_lists);
@@ -157,6 +171,7 @@ Pipeline::Pipeline(const Config& config,
             _events.at(i)->AppendSignalEvent(*_command_lists.at(i));
         }
     }
+    std::cerr << "pipeline initialized\n";
     _logger.debug("Pipeline - initialize completed");
 }
 
@@ -223,7 +238,7 @@ void Pipeline::reset() const {
     _logger.debug("Pipeline - rest() completed");
 };
 
-void Pipeline::update_graph_arguments(uint32_t arg_index, const void* arg_data, size_t byte_size) {
+void Pipeline::update_graph_arguments(uint32_t arg_index, const void* arg_data, size_t byte_size, std::optional<std::array<uint32_t, 5>> strides) {
     OV_ITT_TASK_CHAIN(ZERO_EXECUTOR_IP_UMCL, itt::domains::LevelZeroBackend, "Pipeline", "updateCommandList");
     _logger.debug("Pipeline - updateCommandList");
 
@@ -232,7 +247,7 @@ void Pipeline::update_graph_arguments(uint32_t arg_index, const void* arg_data, 
     for (size_t i = 0; i < number_of_command_lists; i++) {
         _command_lists.at(i)->updateMutableCommandList(
             arg_index,
-            static_cast<const unsigned char*>(arg_data) + (i * byte_size) / number_of_command_lists);
+            static_cast<const unsigned char*>(arg_data) + (i * byte_size) / number_of_command_lists, strides);
     }
 };
 

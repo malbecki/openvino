@@ -17,6 +17,7 @@ namespace intel_npu {
 
 struct ArgumentDescriptor {
     ze_graph_argument_properties_3_t info;
+    ze_graph_argument_property_strides_t infoStrides;
     uint32_t idx;
     std::string to_string() const {
         std::stringstream sstream;

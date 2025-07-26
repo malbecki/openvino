@@ -215,6 +215,11 @@ public:
         throwWhenUnsupported("pfnBuildLogDestroy", ZE_GRAPH_EXT_VERSION_1_12);
         return _impl->pfnBuildLogDestroy(hGraphBuildLog);
     }
+
+    ze_result_t ZE_APICALL pfnSetArgumentValue2(ze_graph_handle_t hGraph, uint32_t argIndex,
+                    const void* pGraphArgumentUserProperties) {
+        return _impl->pfnSetArgumentValue2(hGraph, argIndex, pGraphArgumentUserProperties);
+    }
 };
 
 /**

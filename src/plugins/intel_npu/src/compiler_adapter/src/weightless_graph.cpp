@@ -308,9 +308,9 @@ void WeightlessGraph::initialize(const Config& config) {
             THROW_ON_FAIL_FOR_LEVELZERO_EXT("pfnGetArgumentProperties3", result, _zeroInitStruct->getGraphDdiTable());
 
             if (arg3.type == ZE_GRAPH_ARGUMENT_TYPE_INPUT) {
-                initInputDescriptors.push_back(ArgumentDescriptor{arg3, index});
+                initInputDescriptors.push_back(ArgumentDescriptor{arg3, {}, index});
             } else {
-                initOutputDescriptors.push_back(ArgumentDescriptor{arg3, index});
+                initOutputDescriptors.push_back(ArgumentDescriptor{arg3, {}, index});
             }
         }
 

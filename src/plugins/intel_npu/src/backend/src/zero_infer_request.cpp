@@ -13,6 +13,8 @@
 #include "openvino/runtime/intel_npu/remote_properties.hpp"
 #include "zero_variable_state.hpp"
 
+#include "openvino/runtime/make_tensor.hpp"
+
 using namespace intel_npu;
 
 namespace {
@@ -298,6 +300,8 @@ void ZeroInferRequest::create_pipeline() {
 
 void ZeroInferRequest::set_tensor(const ov::Output<const ov::Node>& port, const ov::SoPtr<ov::ITensor>& tensor) {
     OV_ITT_TASK_CHAIN(ZERO_SET_TENSOR, itt::domains::LevelZeroBackend, "set_tensor", "set_tensor");
+
+    std::cerr << "set tensor\n";
 
     auto foundPort = find_port(port);
     OPENVINO_ASSERT(foundPort.found(), "Cannot find tensor for port ", port);
@@ -704,7 +708,6 @@ void ZeroInferRequest::infer() {
     if (_config.get<RUN_INFERENCES_SEQUENTIALLY>()) {
         OPENVINO_THROW("Only start async is supported when RUN_INFERENCES_SEQUENTIALLY is enabled!");
     }
-
     infer_async();
     get_result();
 }
@@ -717,6 +720,7 @@ void ZeroInferRequest::infer_async() {
         std::lock_guard<std::mutex> lock(_graph->get_mutex());
 
         if (!_pipelineIsCreated || _dynamicBatchValueChanged) {
+            std::cerr << "create pipeline\n";
             OV_ITT_TASK_NEXT(ZERO_INFER, "create_pipeline");
             create_pipeline();  // Reallocate pipeline if necessary
             _pipelineIsCreated = true;
