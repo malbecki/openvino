@@ -16,6 +16,8 @@
 #include "zero_memory.hpp"
 #include "zero_variable_state.hpp"
 
+#include "openvino/runtime/make_tensor.hpp"
+
 using namespace intel_npu;
 
 namespace {
@@ -307,6 +309,7 @@ void ZeroInferRequest::set_tensor_data(const std::shared_ptr<ov::ITensor>& tenso
                                        const size_t index,
                                        const bool isInput) {
     OV_ITT_TASK_CHAIN(ZERO_SET_TENSOR, itt::domains::LevelZeroBackend, "set_tensor", "set_tensor_data");
+    std::cerr << "set tensor data\n";
     auto& levelZeroTensors = isInput ? get_level_zero_input(index) : _levelZeroOutputTensors.at(index);
 
     bool updateCommandListArg = false;
@@ -377,6 +380,7 @@ void ZeroInferRequest::set_tensor_data(const std::shared_ptr<ov::ITensor>& tenso
 void ZeroInferRequest::set_remote_tensor_data(const std::shared_ptr<ZeroRemoteTensor>& tensor,
                                               const size_t index,
                                               const bool isInput) {
+    std::cerr << "set remote tensor data\n";
     OV_ITT_TASK_CHAIN(ZERO_SET_REMOTE_TENSOR, itt::domains::LevelZeroBackend, "set_tensor", "set_remote_tensor_data");
 
     auto l0_context = tensor->get_zero_context_handle();
@@ -401,8 +405,77 @@ void ZeroInferRequest::set_remote_tensor_data(const std::shared_ptr<ZeroRemoteTe
     }
 }
 
+template <typename Type>
+std::optional<Type> extract_object(const ov::AnyMap& params, const ov::Property<Type>& p) {
+    auto itrHandle = params.find(p.name());
+    if (itrHandle == params.end()) {
+        return std::nullopt;
+    }
+
+    return ov::Any(itrHandle->second).as<Type>();
+}
+
+void ZeroInferRequest::set_remote_data(const std::shared_ptr<ov::IRemoteTensor>& remoteTensor, const size_t index, const bool isInput) {
+    std::cerr << "set real remote tensor data\n";
+
+    auto& levelZeroTensors = isInput ? get_level_zero_input(index) : _levelZeroOutputTensors.at(index);
+    levelZeroTensors = remoteTensor;
+
+    if (_pipelineIsCreated) {
+        std::cerr << "update command list\n";
+        _logger.debug("ZeroInferRequest::infer_async - update command list");
+
+        //auto data = zeroTensor->get_original_memory();
+        //OPENVINO_ASSERT(data, "Empty buffer");
+        void* data = nullptr;
+
+        auto props = remoteTensor->get_properties();
+        std::optional<void*> mem_handle_object = extract_object(props, ov::intel_npu::mem_handle);
+        if (!mem_handle_object.has_value()) {
+            OPENVINO_THROW("no mem handle for remote tensor\n");
+        }
+
+        data = mem_handle_object.value();
+
+        auto itrHandle = props.find("offset");
+        size_t offset = 0;
+        if (itrHandle != props.end()) {
+            offset = ov::Any(itrHandle->second).as<size_t>();
+        }
+        data = reinterpret_cast<void*>(reinterpret_cast<unsigned char*>(data) + offset);
+
+        std::optional<std::array<uint32_t, 5>> optStrides = std::nullopt;
+
+        if (!remoteTensor->is_continuous()) {
+            std::cerr << "set real remote tensor strides\n";
+            std::array<uint32_t, 5> userStrides;
+            auto strides = remoteTensor->get_strides();
+            auto stridesIt = strides.rbegin();
+            auto byteWidth = *stridesIt;
+            for (auto idx = 0; idx < 5; idx++) {
+                if (idx < strides.size()) {
+                    userStrides[idx] = static_cast<uint32_t>(*stridesIt / byteWidth);
+                    stridesIt++;
+                    std::cerr << "setting user strides on input idx = " << idx << " value " << userStrides[idx] << std::endl;
+                } else {
+                    userStrides[idx] = 0;
+                }
+            }
+            optStrides = userStrides;
+        }
+
+        OV_ITT_TASK_NEXT(ZERO_SET_REMOTE_TENSOR, "update_graph_arguments");
+        _pipeline->update_graph_arguments(
+            isInput ? _graph->get_input_descriptors().at(index).idx : _graph->get_output_descriptors().at(index).idx,
+            data,
+            remoteTensor->get_byte_size(), optStrides);
+    }
+}
+
 void ZeroInferRequest::set_tensor(const ov::Output<const ov::Node>& port, const ov::SoPtr<ov::ITensor>& tensor) {
     OV_ITT_SCOPED_TASK(itt::domains::LevelZeroBackend, "set_tensor");
+
+    std::cerr << "set tensor\n";
 
     auto foundPort = find_port(port);
     OPENVINO_ASSERT(foundPort.found(), "Cannot find tensor for port ", port);
@@ -475,13 +548,19 @@ void ZeroInferRequest::set_tensor(const ov::Output<const ov::Node>& port, const 
 
     if (_initStructs->getMutableCommandListExtVersion() >= ZE_MAKE_VERSION(1, 0)) {
         auto remoteTensor = std::dynamic_pointer_cast<ZeroRemoteTensor>(tensor._ptr);
+        auto realRemoteTensor = std::dynamic_pointer_cast<ov::IRemoteTensor>(tensor._ptr);
+        if (realRemoteTensor == nullptr) {
+            std::cerr << "tensor is not real remote\n";
+        }
 
-        if (remoteTensor == nullptr) {
-            _logger.debug("ZeroInferRequest::set_tensor - set new tensor");
-            set_tensor_data(tensor._ptr, foundPort.idx, foundPort.is_input());
-        } else {
+        if (remoteTensor) {
             _logger.debug("ZeroInferRequest::set_tensor - set new remote tensor");
             set_remote_tensor_data(std::move(remoteTensor), foundPort.idx, foundPort.is_input());
+        } else if (realRemoteTensor) {
+            set_remote_data(realRemoteTensor, foundPort.idx, foundPort.is_input());
+        } else {
+            _logger.debug("ZeroInferRequest::set_tensor - set new tensor");
+            set_tensor_data(tensor._ptr, foundPort.idx, foundPort.is_input());  
         }
     }
 }
@@ -710,7 +789,7 @@ void ZeroInferRequest::update_pipeline_if_memory_changed() {
             continue;
         }
 
-        if (zeroTensor->memory_address_changed()) {
+        //if (zeroTensor->memory_address_changed()) {
             _logger.debug("Update output graph descriptor with the new tensor");
             OPENVINO_ASSERT(zeroTensor->data(), "Empty buffer");
 
@@ -719,7 +798,7 @@ void ZeroInferRequest::update_pipeline_if_memory_changed() {
                                               zeroTensor->get_byte_size());
 
             zeroTensor->reset_memory_flag();
-        }
+        //}
 
         ++ioIndex;
     }
@@ -815,7 +894,6 @@ void ZeroInferRequest::infer() {
     if (_config.get<RUN_INFERENCES_SEQUENTIALLY>()) {
         OPENVINO_THROW("Only start async is supported when RUN_INFERENCES_SEQUENTIALLY is enabled!");
     }
-
     infer_async();
     get_result();
 }
@@ -828,6 +906,7 @@ void ZeroInferRequest::infer_async() {
         std::lock_guard<std::mutex> lock(_graph->get_mutex());
 
         if (!_pipelineIsCreated || _dynamicBatchValueChanged) {
+            std::cerr << "create pipeline\n";
             OV_ITT_TASK_NEXT(ZERO_INFER, "create_pipeline");
             create_pipeline();  // Reallocate pipeline if necessary
             _pipelineIsCreated = true;
@@ -925,11 +1004,26 @@ void ZeroInferRequest::infer_async() {
         }
 
         auto userRemoteTensor = std::dynamic_pointer_cast<ZeroRemoteTensor>(userTensor.at(SINGLE_TENSOR)._ptr);
-        void* userBuffer =
-            !userRemoteTensor ? userTensor.at(SINGLE_TENSOR)->data() : userRemoteTensor->get_original_memory();
+        auto realRemoteTensor = std::dynamic_pointer_cast<ov::IRemoteTensor>(userTensor.at(SINGLE_TENSOR)._ptr);
+        std::cerr << "before userBuffer\n";
+        void* userBuffer = nullptr;
+        if (userRemoteTensor) {
+            userBuffer = userRemoteTensor->get_original_memory();
+        } else if (realRemoteTensor) {
+            auto props = realRemoteTensor->get_properties();
+            std::optional<void*> mem_handle_object = extract_object(props, ov::intel_npu::mem_handle);
+            if (!mem_handle_object.has_value()) {
+                OPENVINO_THROW("no mem handle for remote tensor\n");
+            }
+            userBuffer = mem_handle_object.value();
+        } else {
+            userBuffer = userTensor.at(SINGLE_TENSOR)->data();
+        }
+        std::cerr << "after userBuffer\n";
 
         const auto& levelZeroTensor = get_level_zero_input(inputIndex);
-        if (!is_remote_tensor(levelZeroTensor)) {
+        auto level_zero_real_remote = std::dynamic_pointer_cast<ov::IRemoteTensor>(levelZeroTensor);
+        if (!(is_remote_tensor(levelZeroTensor) || (level_zero_real_remote != nullptr))) {
             void* levelZeroBuffer = levelZeroTensor->data();
             if (userBuffer == nullptr || levelZeroBuffer == nullptr) {
                 OPENVINO_THROW("Empty buffer");
@@ -974,10 +1068,14 @@ void ZeroInferRequest::get_result() {
         }
 
         auto userRemoteTensor = std::dynamic_pointer_cast<ZeroRemoteTensor>(userTensor._ptr);
-        void* userBuffer = !userRemoteTensor ? userTensor->data() : userRemoteTensor->get_original_memory();
+        auto userRealRemote = std::dynamic_pointer_cast<ov::IRemoteTensor>(userTensor._ptr);
+        void* userBuffer = nullptr;
+        if (!userRealRemote) {
+            userBuffer = !userRemoteTensor ? userTensor->data() : userRemoteTensor->get_original_memory();
+        }
 
         const std::shared_ptr<ov::ITensor>& levelZeroTensor = _levelZeroOutputTensors.at(outputIndex);
-        if (!is_remote_tensor(levelZeroTensor)) {
+        if (!is_remote_tensor(levelZeroTensor) && !userRealRemote) {
             void* levelZeroBuffer = levelZeroTensor->data();
             if (userBuffer == nullptr || levelZeroBuffer == nullptr) {
                 OPENVINO_THROW("Empty buffer");

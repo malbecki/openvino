@@ -124,7 +124,7 @@ void ZeGraphExtWrappers::setGraphArgumentValue(const GraphDescriptor& graphDescr
                                                uint32_t argi,
                                                const void* argv) const {
     _logger.debug("setGraphArgumentValue - perform pfnSetArgumentValue");
-    auto result = _zeroInitStruct->getGraphDdiTable().pfnSetArgumentValue(graphDescriptor._handle, argi, argv);
+    auto result = _zeroInitStruct->getGraphDdiTable().pfnSetArgumentValue2(graphDescriptor._handle, argi, argv);
     THROW_ON_FAIL_FOR_LEVELZERO_EXT("zeGraphSetArgumentValue", result, _zeroInitStruct->getGraphDdiTable());
 }
 

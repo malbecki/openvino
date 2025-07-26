@@ -11,6 +11,9 @@
 #include "intel_npu/utils/zero/zero_types.hpp"
 #include "intel_npu/utils/zero/zero_utils.hpp"
 
+#include <optional>
+#include <array>
+
 namespace intel_npu {
 class CommandList;
 class CommandQueue;
@@ -72,7 +75,7 @@ public:
     void appendGraphInitialize(const ze_graph_handle_t& graph_handle) const;
     void appendGraphExecute(const ze_graph_handle_t& graph_handle,
                             const ze_graph_profiling_query_handle_t& profiling_query_handle) const;
-    void updateMutableCommandList(uint32_t arg_index, const void* arg_value) const;
+    void updateMutableCommandList(uint32_t arg_index, const void* arg_value, std::optional<std::array<uint32_t, 5>> strides = std::nullopt) const;
     void appendNpuTimestamp(uint64_t* timestamp_buff) const;
     void appendBarrier() const;
     void close() const;

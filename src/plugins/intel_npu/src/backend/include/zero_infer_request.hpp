@@ -55,6 +55,8 @@ private:
                                 const size_t index,
                                 const bool isInput);
 
+    void set_remote_data(const std::shared_ptr<ov::IRemoteTensor>& remoteTensor, const size_t index, const bool isInput);
+
     void check_network_precision(const ov::element::Type_t precision) const override;
     void create_pipeline();
 

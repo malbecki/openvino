@@ -30,7 +30,7 @@ public:
     void pull();
     void reset() const;
 
-    void update_graph_arguments(uint32_t arg_index, const void* arg_data, size_t byte_size);
+    void update_graph_arguments(uint32_t arg_index, const void* arg_data, size_t byte_size, std::optional<std::array<uint32_t, 5>> strides = std::nullopt);
     void update_graph_arguments_batching(uint32_t arg_index, const void* arg_data, size_t batch_index);
 
     std::vector<ov::ProfilingInfo> get_profiling_info() const;

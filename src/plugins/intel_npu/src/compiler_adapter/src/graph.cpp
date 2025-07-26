@@ -180,15 +180,19 @@ void Graph::initialize(const Config& config) {
     _logger.debug("performing pfnGetArgumentProperties3");
     for (uint32_t index = 0; index < props.numGraphArgs; ++index) {
         ze_graph_argument_properties_3_t arg3{};
+        ze_graph_argument_property_strides_t strides{};
         arg3.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_PROPERTIES;
+        strides.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_PROPERTY_STRIDES;
+        strides.pNext = nullptr;
+        arg3.pNext = reinterpret_cast<void*>(&strides);
         auto result = _zeroInitStruct->getGraphDdiTable().pfnGetArgumentProperties3(_graphDesc._handle, index, &arg3);
         THROW_ON_FAIL_FOR_LEVELZERO_EXT("pfnGetArgumentProperties3", result, _zeroInitStruct->getGraphDdiTable());
 
         if (arg3.type == ZE_GRAPH_ARGUMENT_TYPE_INPUT) {
-            _inputDescriptors.push_back(ArgumentDescriptor{arg3, index});
+            _inputDescriptors.push_back(ArgumentDescriptor{arg3, strides, index});
             _logger.debug("got pfnGetArgumentProperties3 for input: %s", _inputDescriptors.back().to_string().c_str());
         } else {
-            _outputDescriptors.push_back(ArgumentDescriptor{arg3, index});
+            _outputDescriptors.push_back(ArgumentDescriptor{arg3, strides, index});
             _logger.debug("got pfnGetArgumentProperties3 for output: %s",
                           _outputDescriptors.back().to_string().c_str());
         }

@@ -15,7 +15,20 @@
 #include "intel_npu/utils/zero/zero_remote_tensor.hpp"
 #include "intel_npu/utils/zero/zero_types.hpp"
 
+namespace {
+    template <typename Type>
+    std::optional<Type> extract_object(const ov::AnyMap& params, const ov::Property<Type>& p) {
+        auto itrHandle = params.find(p.name());
+        if (itrHandle == params.end()) {
+            return std::nullopt;
+        }
+
+        return ov::Any(itrHandle->second).as<Type>();
+    }
+}
+
 namespace intel_npu {
+    
 Pipeline::Pipeline(const Config& config,
                    const std::shared_ptr<ZeroInitStructsHolder>& init_structs,
                    const std::shared_ptr<IGraph>& graph,
@@ -28,6 +41,7 @@ Pipeline::Pipeline(const Config& config,
       _id(_graph->get_unique_id()),
       _number_of_command_lists(batch_size),
       _logger("Pipeline", _config.get<LOG_LEVEL>()) {
+    std::cerr << "Initializing pipeline\n";
     OV_ITT_SCOPED_TASK(itt::domains::LevelZeroBackend, "Zero_infer_request::Pipeline::Pipeline");
 
     _logger.debug("Pipeline - initialize started, number_of_command_lists %i", _number_of_command_lists);
@@ -97,13 +111,51 @@ Pipeline::Pipeline(const Config& config,
                 _logger.debug("Pipeline - set args for input index: %zu", io_index);
                 void* data = nullptr;
                 auto remote_tensor = std::dynamic_pointer_cast<ZeroRemoteTensor>(input_tensors.at(io_index).at(i));
-                if (remote_tensor == nullptr) {
-                    data = input_tensors.at(io_index).at(i)->data();
-                } else {
+                auto real_remote_tensor = std::dynamic_pointer_cast<ov::IRemoteTensor>(input_tensors.at(io_index).at(i));
+                if (remote_tensor) {
                     data = remote_tensor->get_original_memory();
+                } else if (real_remote_tensor) {
+                    auto props = real_remote_tensor->get_properties();
+                    std::optional<void*> mem_handle_object = extract_object(props, ov::intel_npu::mem_handle);
+                    if (!mem_handle_object.has_value()) {
+                        OPENVINO_THROW("no mem handle for remote tensor\n");
+                    }
+                    data = mem_handle_object.value();
+                } else {
+                    data = input_tensors.at(io_index).at(i)->data();
                 }
 
-                graph->set_argument_value(desc.idx, data);
+                ze_graph_argument_value_tensor_t tensor_value;
+
+                tensor_value.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_TENSOR;
+                tensor_value.pNext = nullptr;
+                tensor_value.pTensor = data;
+
+                std::cerr << "before check1\n";
+                if (!input_tensors.at(io_index).at(i)->is_continuous()) {
+                    std::cerr << "input not continous\n";
+                    if (!desc.infoStrides.supportsDynamicStrides) {
+                        OPENVINO_THROW("Non continous input tensor on port without dynamic strides support");
+                    }
+                    ze_graph_argument_value_strides_t tensor_strides;
+                    tensor_strides.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_STRIDES;
+                    tensor_strides.pNext = nullptr;
+                    auto strides = input_tensors.at(io_index).at(i)->get_strides();
+                    auto stridesIt = strides.rbegin();
+                    auto byteWidth = *stridesIt;
+                    for (auto idx = 0; idx < 5; idx++) {
+                        if (idx < strides.size()) {
+                            tensor_strides.userStrides[idx] = static_cast<uint32_t>(*stridesIt / byteWidth);
+                            stridesIt++;
+                            std::cerr << "setting user strides on inputs idx = " << idx << " value " << tensor_strides.userStrides[idx] << std::endl;
+                        } else {
+                            tensor_strides.userStrides[idx] = 0;
+                        }
+                    }
+                    tensor_value.pNext = reinterpret_cast<void*>(&tensor_strides);
+                }
+
+                graph->set_argument_value(desc.idx, &tensor_value);
 
                 ++io_index;
                 continue;
@@ -111,16 +163,61 @@ Pipeline::Pipeline(const Config& config,
 
             void* data = nullptr;
             auto remote_tensor = std::dynamic_pointer_cast<ZeroRemoteTensor>(input_tensors.at(io_index).at(0));
-            if (remote_tensor == nullptr) {
-                data = input_tensors.at(io_index).at(0)->data();
-            } else {
+            auto real_remote_tensor = std::dynamic_pointer_cast<ov::IRemoteTensor>(input_tensors.at(io_index).at(0));
+            if (remote_tensor) {
                 data = remote_tensor->get_original_memory();
+            } else if (real_remote_tensor) {
+                std::cerr << "getting data from real remote tensor\n";
+                auto props = real_remote_tensor->get_properties();
+                std::optional<void*> mem_handle_object = extract_object(props, ov::intel_npu::mem_handle);
+                if (!mem_handle_object.has_value()) {
+                    OPENVINO_THROW("no mem handle for remote tensor\n");
+                }
+                data = mem_handle_object.value();
+
+                auto itrHandle = props.find("offset");
+                size_t offset = 0;
+                if (itrHandle != props.end()) {
+                    offset = ov::Any(itrHandle->second).as<size_t>();
+                }
+                data = reinterpret_cast<void*>(reinterpret_cast<unsigned char*>(data) + offset);
+            } else {
+                data = input_tensors.at(io_index).at(i)->data();
+            }
+
+            ze_graph_argument_value_tensor_t tensor_value;
+            tensor_value.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_TENSOR;
+            tensor_value.pNext = nullptr;
+            tensor_value.pTensor = static_cast<unsigned char*>(data) +
+                    (i * input_tensors.at(io_index).at(0)->get_byte_size()) / _number_of_command_lists;
+
+            std::cerr << "before check2\n";
+            if (!input_tensors.at(io_index).at(0)->is_continuous()) {
+                std::cerr << "input not continous\n";
+                if (!desc.infoStrides.supportsDynamicStrides) {
+                    OPENVINO_THROW("Non continous input tensor on port without dynamic strides support");
+                }
+                ze_graph_argument_value_strides_t tensor_strides;
+                tensor_strides.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_STRIDES;
+                tensor_strides.pNext = nullptr;
+                auto strides = input_tensors.at(io_index).at(0)->get_strides();
+                auto stridesIt = strides.rbegin();
+                auto byteWidth = *stridesIt;
+                for (auto idx = 0; idx < 5; idx++) {
+                    if (idx < strides.size()) {
+                        tensor_strides.userStrides[idx] = static_cast<uint32_t>(*stridesIt / byteWidth);
+                        stridesIt++;
+                        std::cerr << "setting user strides on input idx = " << idx << " value " << tensor_strides.userStrides[idx] << std::endl;
+                    } else {
+                        tensor_strides.userStrides[idx] = 0;
+                    }
+                }
+                tensor_value.pNext = reinterpret_cast<void*>(&tensor_strides);
             }
 
             graph->set_argument_value(
                 desc.idx,
-                static_cast<unsigned char*>(data) +
-                    (i * input_tensors.at(io_index).at(0)->get_byte_size()) / _number_of_command_lists);
+                &tensor_value);
 
             ++io_index;
         }
@@ -136,10 +233,37 @@ Pipeline::Pipeline(const Config& config,
                 data = remote_tensor->get_original_memory();
             }
 
+            ze_graph_argument_value_tensor_t tensor_value;
+            tensor_value.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_TENSOR;
+            tensor_value.pNext = nullptr;
+            tensor_value.pTensor = static_cast<unsigned char*>(data) +
+                    (i * output_tensors.at(io_index)->get_byte_size()) / _number_of_command_lists;
+
+            if (!output_tensors.at(io_index)->is_continuous()) {
+                if (!desc.infoStrides.supportsDynamicStrides) {
+                    OPENVINO_THROW("Non continous output tensor on port without dynamic strides support");
+                }
+                ze_graph_argument_value_strides_t tensor_strides;
+                tensor_strides.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_STRIDES;
+                tensor_strides.pNext = nullptr;
+                auto strides = output_tensors.at(io_index)->get_strides();
+                auto stridesIt = strides.rbegin();
+                auto byteWidth = *stridesIt;
+                for (auto idx = 0; idx < 5; idx++) {
+                    if (strides.size() < idx) {
+                        tensor_strides.userStrides[idx] = static_cast<uint32_t>(*stridesIt / byteWidth);
+                        stridesIt++;
+                    } else {
+                        tensor_strides.userStrides[idx] = 0;
+                    }
+                }
+                tensor_value.pNext = reinterpret_cast<void*>(&tensor_strides);
+            }
+
             graph->set_argument_value(
                 desc.idx,
-                static_cast<unsigned char*>(data) +
-                    (i * output_tensors.at(io_index)->get_byte_size()) / _number_of_command_lists);
+                &tensor_value);
+
             ++io_index;
         }
 
@@ -181,6 +305,7 @@ Pipeline::Pipeline(const Config& config,
             _events.at(i)->AppendSignalEvent(*_command_lists.at(i));
         }
     }
+    std::cerr << "pipeline initialized\n";
     _logger.debug("Pipeline - initialize completed");
 }
 
@@ -247,7 +372,7 @@ void Pipeline::reset() const {
     _logger.debug("Pipeline - rest() completed");
 };
 
-void Pipeline::update_graph_arguments(uint32_t arg_index, const void* arg_data, size_t byte_size) {
+void Pipeline::update_graph_arguments(uint32_t arg_index, const void* arg_data, size_t byte_size, std::optional<std::array<uint32_t, 5>> strides) {
     OV_ITT_TASK_CHAIN(ZERO_EXECUTOR_IP_UMCL, itt::domains::LevelZeroBackend, "Pipeline", "updateCommandList");
     _logger.debug("Pipeline - updateCommandList");
 
@@ -256,7 +381,7 @@ void Pipeline::update_graph_arguments(uint32_t arg_index, const void* arg_data, 
     for (size_t i = 0; i < number_of_command_lists; i++) {
         _command_lists.at(i)->updateMutableCommandList(
             arg_index,
-            static_cast<const unsigned char*>(arg_data) + (i * byte_size) / number_of_command_lists);
+            static_cast<const unsigned char*>(arg_data) + (i * byte_size) / number_of_command_lists, strides);
     }
 };
 

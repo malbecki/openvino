@@ -6,6 +6,8 @@
 
 #include "intel_npu/utils/zero/zero_api.hpp"
 
+#include <ze_graph_ext.h>
+
 namespace intel_npu {
 
 EventPool::EventPool(ze_device_handle_t device_handle, const ze_context_handle_t& context, uint32_t event_count)
@@ -129,7 +131,7 @@ CommandList::~CommandList() {
 
     _handle = nullptr;
 }
-void CommandList::updateMutableCommandList(uint32_t arg_index, const void* arg_value) const {
+void CommandList::updateMutableCommandList(uint32_t arg_index, const void* arg_value, std::optional<std::array<uint32_t, 5>> strides) const {
     ze_mutable_graph_argument_exp_desc_t desc = {
         (_init_structs->getZeDrvApiVersion() >= ZE_MAKE_VERSION(1, 11))
             ? ZE_STRUCTURE_TYPE_MUTABLE_GRAPH_ARGUMENT_EXP_DESC
@@ -138,6 +140,20 @@ void CommandList::updateMutableCommandList(uint32_t arg_index, const void* arg_v
         _command_id,
         arg_index,
         arg_value};
+
+    ze_graph_argument_value_strides_t strides_desc = {
+        ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_STRIDES,
+        nullptr,
+        {0, 0, 0, 0, 0}
+    };
+
+    if (strides.has_value()) {
+        std::cerr << "got custom strides\n";
+        for (size_t idx = 0; idx < strides.value().size(); idx++) {
+            strides_desc.userStrides[idx] = strides.value()[idx];
+        }
+        desc.pNext = &strides_desc;
+    }
 
     ze_mutable_commands_exp_desc_t mutable_commands_exp_desc_t = {ZE_STRUCTURE_TYPE_MUTABLE_COMMANDS_EXP_DESC,
                                                                   &desc,

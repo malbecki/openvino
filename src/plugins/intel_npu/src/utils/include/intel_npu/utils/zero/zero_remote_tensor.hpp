@@ -72,6 +72,8 @@ public:
 
     ~ZeroRemoteTensor() override;
 
+    void copy_to(const std::shared_ptr<ov::ITensor>& dst, size_t src_offset, size_t dst_offset, const ov::Shape& roi_shape) const override;
+
 private:
     void allocate(const size_t bytes);
     bool deallocate() noexcept;
@@ -101,6 +103,8 @@ private:
     bool _mmaped_file_support = false;
 
     ov::Tensor _mmap_tensor;
+
+    size_t _size = 0;
 };
 
 inline bool is_remote_tensor(const std::shared_ptr<ov::ITensor>& tensor) {

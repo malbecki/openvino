@@ -467,7 +467,11 @@ public:
 class RoiRemoteTensor : public BaseRoiTensor, public IRemoteTensor {
 public:
     RoiRemoteTensor(const std::shared_ptr<ITensor>& owner, const Coordinate& begin, const Coordinate& end)
-        : BaseRoiTensor(owner, begin, end) {}
+        : BaseRoiTensor(owner, begin, end) {
+        auto remote_tensor = std::dynamic_pointer_cast<ov::IRemoteTensor>(m_owner);
+        _decorated_props = remote_tensor->get_properties();
+        _decorated_props.insert(std::make_pair("offset", m_offset));
+    }
 
     const element::Type& get_element_type() const override {
         return m_owner->get_element_type();
@@ -528,14 +532,17 @@ public:
     };
 
     const AnyMap& get_properties() const override {
-        auto remote_tensor = std::dynamic_pointer_cast<ov::IRemoteTensor>(m_owner);
-        return remote_tensor->get_properties();
+        return _decorated_props;
     };
 
     const std::string& get_device_name() const override {
         auto remote_tensor = std::dynamic_pointer_cast<ov::IRemoteTensor>(m_owner);
         return remote_tensor->get_device_name();
     }
+
+private:
+
+    AnyMap _decorated_props;
 };
 
 /**
