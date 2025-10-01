@@ -200,6 +200,18 @@ struct OptionPrinter<std::map<K, V>> final {
     }
 };
 
+template <>
+struct OptionPrinter<std::vector<int>> final {
+    static std::string toString(const std::vector<int>& val) {
+        std::stringstream ss;
+        for (auto& arg : val) {
+            ss << arg << " ";
+        }
+
+        return ss.str();
+    }
+};
+
 // NB: boolean config option has values YES for true, NO for false
 template <>
 struct OptionPrinter<bool> final {
