@@ -15,6 +15,7 @@
 #include <cctype>
 #include <iomanip>
 #include <istream>
+#include <iterator>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -1367,4 +1368,20 @@ static constexpr Property<uint64_t, PropertyMutability::RW> key_cache_group_size
  * @ingroup ov_runtime_cpp_prop_api
  */
 static constexpr Property<uint64_t, PropertyMutability::RW> value_cache_group_size{"VALUE_CACHE_GROUP_SIZE"};
+
+inline std::ostream& operator<<(std::ostream& os, const std::vector<int>& args_with_dynamic_strides) {
+    for (auto& arg : args_with_dynamic_strides) {
+        os << arg << " ";
+    }
+    return os;
+}
+
+inline std::istream& operator>>(std::istream& is, std::vector<int>& args_with_dynamic_strides) {
+    args_with_dynamic_strides = std::vector<int>(std::istream_iterator<int>(is), std::istream_iterator<int>());
+    return is;
+}
+
+static constexpr Property<std::vector<int>> inputs_with_dynamic_strides("INPUTS_WITH_DYNAMIC_STRIDES");
+
+static constexpr Property<std::vector<int>> outputs_with_dynamic_strides("OUTPUTS_WITH_DYNAMIC_STRIDES");
 }  // namespace ov
