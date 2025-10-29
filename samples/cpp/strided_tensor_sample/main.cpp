@@ -5,6 +5,7 @@
 #include "openvino/pass/serialize.hpp"
 
 #include <openvino/runtime/intel_npu/remote_properties.hpp>
+#include <openvino/runtime/properties.hpp>
 
 #include <iostream>
 
@@ -20,7 +21,13 @@ void stridedEltwiseTest(ov::Core& core) {
     auto multiply = std::make_shared<ov::op::v1::Multiply>(param1, param2);
     const auto results = ov::ResultVector{std::make_shared<ov::opset1::Result>(multiply->output(0))};
     auto multiplyModel = std::make_shared<ov::Model>(results, ov::ParameterVector{param1, param2}, "EltwiseMultiply");
-    ov::CompiledModel compiled_model = core.compile_model(multiplyModel, "NPU");
+
+    std::vector<int> inputs_with_strides{0, 1};
+    std::vector<int> outputs_with_strides{0};
+    ov::AnyMap compilation_params { ov::inputs_with_dynamic_strides(inputs_with_strides),
+                                    ov::outputs_with_dynamic_strides(outputs_with_strides) };
+
+    ov::CompiledModel compiled_model = core.compile_model(multiplyModel, "NPU", compilation_params);
     ov::InferRequest infer_request = compiled_model.create_infer_request();
 
     auto outputTensor = infer_request.get_output_tensor(0);

@@ -386,6 +386,8 @@ void Properties::registerPluginProperties() {
     TRY_REGISTER_SIMPLE_PROPERTY(ov::intel_npu::use_base_model_serializer, USE_BASE_MODEL_SERIALIZER);
     TRY_REGISTER_SIMPLE_PROPERTY(ov::intel_npu::serialization_weights_size_threshold,
                                  SERIALIZATION_WEIGHTS_SIZE_THRESHOLD);
+    TRY_REGISTER_SIMPLE_PROPERTY(ov::inputs_with_dynamic_strides, INPUTS_WITH_DYNAMIC_STRIDES);
+    TRY_REGISTER_SIMPLE_PROPERTY(ov::outputs_with_dynamic_strides, OUTPUTS_WITH_DYNAMIC_STRIDES);
 
     TRY_REGISTER_CUSTOMFUNC_PROPERTY(ov::intel_npu::stepping, STEPPING, [&](const Config& config) {
         if (!config.has<STEPPING>()) {
@@ -595,13 +597,13 @@ void Properties::registerCompiledModelProperties() {
     TRY_REGISTER_SIMPLE_PROPERTY(ov::compilation_num_threads, COMPILATION_NUM_THREADS);
     TRY_REGISTER_SIMPLE_PROPERTY(ov::hint::inference_precision, INFERENCE_PRECISION_HINT);
     TRY_REGISTER_SIMPLE_PROPERTY(ov::cache_mode, CACHE_MODE);
+    TRY_REGISTER_SIMPLE_PROPERTY(ov::inputs_with_dynamic_strides, INPUTS_WITH_DYNAMIC_STRIDES);
+    TRY_REGISTER_SIMPLE_PROPERTY(ov::outputs_with_dynamic_strides, OUTPUTS_WITH_DYNAMIC_STRIDES);
 
     // Properties we shall only enable if they were set prior-to-compilation
     TRY_REGISTER_COMPILEDMODEL_PROPERTY_IFSET(ov::weights_path, WEIGHTS_PATH);
     TRY_REGISTER_COMPILEDMODEL_PROPERTY_IFSET(ov::cache_dir, CACHE_DIR);
     TRY_REGISTER_COMPILEDMODEL_PROPERTY_IFSET(ov::enable_profiling, PERF_COUNT);
-    TRY_REGISTER_COMPILEDMODEL_PROPERTY_IFSET(ov::inputs_with_dynamic_strides, INPUTS_WITH_DYNAMIC_STRIDES);
-    TRY_REGISTER_COMPILEDMODEL_PROPERTY_IFSET(ov::outputs_with_dynamic_strides, OUTPUTS_WITH_DYNAMIC_STRIDES);
     TRY_REGISTER_COMPILEDMODEL_PROPERTY_IFSET(ov::intel_npu::profiling_type, PROFILING_TYPE);
     TRY_REGISTER_COMPILEDMODEL_PROPERTY_IFSET(ov::intel_npu::turbo, TURBO);
     TRY_REGISTER_COMPILEDMODEL_PROPERTY_IFSET(ov::intel_npu::compilation_mode_params, COMPILATION_MODE_PARAMS);

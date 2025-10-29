@@ -184,8 +184,11 @@ void Graph::initialize(const Config& config) {
         arg3.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_PROPERTIES;
         strides.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_PROPERTY_STRIDES;
         strides.pNext = nullptr;
+        strides.supportsDynamicStrides = false;
         arg3.pNext = reinterpret_cast<void*>(&strides);
+        std::cerr << "before calling get argument properties " << strides.supportsDynamicStrides << std::endl;
         auto result = _zeroInitStruct->getGraphDdiTable().pfnGetArgumentProperties3(_graphDesc._handle, index, &arg3);
+        std::cerr << "after calling get argument properties " << strides.supportsDynamicStrides << std::endl;
         THROW_ON_FAIL_FOR_LEVELZERO_EXT("pfnGetArgumentProperties3", result, _zeroInitStruct->getGraphDdiTable());
 
         if (arg3.type == ZE_GRAPH_ARGUMENT_TYPE_INPUT) {

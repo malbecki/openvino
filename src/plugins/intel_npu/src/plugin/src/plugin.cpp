@@ -502,7 +502,7 @@ FilteredConfig Plugin::fork_local_config(const std::map<std::string, std::string
             localConfig.update({{std::string(COMPILER_TYPE::key()), it->second}});
             // enable/disable config keys based on what the new compiler supports
             filter_config_by_compiler_support(localConfig);
-            compiler_changed = true;
+            compiler_changed = false;
         }
     }
     // 2. Revalidate unknown internal configs

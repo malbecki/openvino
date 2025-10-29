@@ -1370,18 +1370,26 @@ static constexpr Property<uint64_t, PropertyMutability::RW> key_cache_group_size
 static constexpr Property<uint64_t, PropertyMutability::RW> value_cache_group_size{"VALUE_CACHE_GROUP_SIZE"};
 
 inline std::ostream& operator<<(std::ostream& os, const std::vector<int>& args_with_dynamic_strides) {
-    for (auto& arg : args_with_dynamic_strides) {
-        os << arg << " ";
+    for (size_t idx = 0; idx < args_with_dynamic_strides.size(); idx++) {
+        os << args_with_dynamic_strides[idx];
+        if (idx != args_with_dynamic_strides.size() - 1) {
+            os << ", ";
+        }
     }
     return os;
 }
 
 inline std::istream& operator>>(std::istream& is, std::vector<int>& args_with_dynamic_strides) {
-    args_with_dynamic_strides = std::vector<int>(std::istream_iterator<int>(is), std::istream_iterator<int>());
+
+    std::string arg;
+    while(std::getline(is, arg, ',')) {
+        args_with_dynamic_strides.push_back(std::stoi(arg));
+    }
+
     return is;
 }
 
-static constexpr Property<std::vector<int>> inputs_with_dynamic_strides("INPUTS_WITH_DYNAMIC_STRIDES");
+static constexpr Property<std::vector<int>, PropertyMutability::RW> inputs_with_dynamic_strides("INPUTS_WITH_DYNAMIC_STRIDES");
 
-static constexpr Property<std::vector<int>> outputs_with_dynamic_strides("OUTPUTS_WITH_DYNAMIC_STRIDES");
+static constexpr Property<std::vector<int>, PropertyMutability::RW> outputs_with_dynamic_strides("OUTPUTS_WITH_DYNAMIC_STRIDES");
 }  // namespace ov
