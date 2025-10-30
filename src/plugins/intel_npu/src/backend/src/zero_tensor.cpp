@@ -54,6 +54,18 @@ ZeroTensor::ZeroTensor(const std::shared_ptr<ZeroInitStructsHolder>& init_struct
     _can_be_reused = true;
 }
 
+namespace {
+    template <typename Type>
+    std::optional<Type> extract_object(const ov::AnyMap& params, const ov::Property<Type>& p) {
+        auto itrHandle = params.find(p.name());
+        if (itrHandle == params.end()) {
+            return std::nullopt;
+        }
+
+        return ov::Any(itrHandle->second).as<Type>();
+    }
+}
+
 ZeroTensor::ZeroTensor(const std::shared_ptr<ZeroInitStructsHolder>& init_structs,
                        const Config& config,
                        const ov::SoPtr<ov::ITensor>& user_tensor)
@@ -71,10 +83,27 @@ ZeroTensor::ZeroTensor(const std::shared_ptr<ZeroInitStructsHolder>& init_struct
     // Check first if the given tensor is a ZeroRemoteTensor (which has a different method to expose the internal
     // storage)
     auto remote_tensor = std::dynamic_pointer_cast<ZeroRemoteTensor>(_user_tensor._ptr);
-    if (remote_tensor == nullptr) {
-        _ptr = _user_tensor->data();
-    } else {
+    auto realRemoteTensor = std::dynamic_pointer_cast<ov::IRemoteTensor>(_user_tensor._ptr);
+    if (remote_tensor) {
         _ptr = remote_tensor->get_original_memory();
+    } else if (realRemoteTensor) {
+        auto props = realRemoteTensor->get_properties();
+        std::optional<void*> mem_handle_object = extract_object(props, ov::intel_npu::mem_handle);
+        if (!mem_handle_object.has_value()) {
+            OPENVINO_THROW("no mem handle for remote tensor\n");
+        }
+        _ptr = mem_handle_object.value();
+
+        
+        auto itrHandle = props.find("offset");
+        size_t offset = 0;
+        if (itrHandle != props.end()) {
+            offset = ov::Any(itrHandle->second).as<size_t>();
+        }
+        _ptr = reinterpret_cast<void*>(reinterpret_cast<unsigned char*>(_ptr) + offset);
+
+    } else {
+        _ptr = _user_tensor->data();
     }
 
     // Check if [data, data + size] was previously imported or allocated in the current level zero context. In such case

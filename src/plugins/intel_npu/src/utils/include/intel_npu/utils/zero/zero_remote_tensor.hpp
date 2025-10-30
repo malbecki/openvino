@@ -101,6 +101,7 @@ private:
 
     ov::Tensor _mmap_tensor;
     std::shared_ptr<ZeroMem> _host_memory;
+    size_t _size = 0;
 };
 
 inline bool is_remote_tensor(const std::shared_ptr<ov::ITensor>& tensor) {

@@ -424,12 +424,33 @@ void ZeroInferRequest::set_tensor(const ov::Output<const ov::Node>& port, const 
 
             OPENVINO_ASSERT(levelZeroTensor->data(), "Empty buffer");
 
+
+            std::optional<std::array<uint32_t, 5>> optStrides = std::nullopt;
+
+            if (!levelZeroTensor->is_continuous()) {
+                    std::cerr << "set tensor strides\n";
+                    std::array<uint32_t, 5> userStrides;
+                    auto strides = levelZeroTensor->get_strides();
+                    auto stridesIt = strides.rbegin();
+                    auto byteWidth = *stridesIt;
+                    for (auto idx = 0; idx < 5; idx++) {
+                        if (idx < strides.size()) {
+                            userStrides[idx] = static_cast<uint32_t>(*stridesIt / byteWidth);
+                            stridesIt++;
+                            std::cerr << "setting user strides on input idx = " << idx << " value " << userStrides[idx] << std::endl;
+                        } else {
+                            userStrides[idx] = 0;
+                        }
+                    }
+                    optStrides = userStrides;
+                }
+
             OV_ITT_TASK_NEXT(ZERO_SET_TENSOR, "update_graph_arguments");
             _pipeline->update_graph_arguments(foundPort.is_input()
                                                   ? _graph->get_input_descriptors().at(foundPort.idx).idx
                                                   : _graph->get_output_descriptors().at(foundPort.idx).idx,
                                               levelZeroTensor->data(),
-                                              levelZeroTensor->get_byte_size());
+                                              levelZeroTensor->get_byte_size(), optStrides);
         }
     }
     // If command list updates are not supported, fallback to copying tensors every time.
@@ -818,6 +839,12 @@ void ZeroInferRequest::infer_async() {
             continue;
         }
 
+        auto realRemoteTensor = std::dynamic_pointer_cast<ov::IRemoteTensor>(userTensor.at(SINGLE_TENSOR)._ptr);
+        if (realRemoteTensor) {
+            ++inputIndex;
+            continue;
+        }
+
         auto userRemoteTensor = std::dynamic_pointer_cast<ZeroRemoteTensor>(userTensor.at(SINGLE_TENSOR)._ptr);
         void* userBuffer =
             !userRemoteTensor ? userTensor.at(SINGLE_TENSOR)->data() : userRemoteTensor->get_original_memory();
@@ -865,6 +892,11 @@ void ZeroInferRequest::get_result() {
         }
 
         auto userRemoteTensor = std::dynamic_pointer_cast<ZeroRemoteTensor>(userTensor._ptr);
+        auto userRealRemote = std::dynamic_pointer_cast<ov::IRemoteTensor>(userTensor._ptr);
+        if (userRealRemote) {
+            ++outputIndex;
+            continue;
+        }
         void* userBuffer = !userRemoteTensor ? userTensor->data() : userRemoteTensor->get_original_memory();
         void* levelZeroBuffer = _levelZeroOutputTensors.at(outputIndex)->data();
 

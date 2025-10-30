@@ -15,18 +15,6 @@
 #include "intel_npu/utils/zero/zero_remote_tensor.hpp"
 #include "intel_npu/utils/zero/zero_types.hpp"
 
-namespace {
-    template <typename Type>
-    std::optional<Type> extract_object(const ov::AnyMap& params, const ov::Property<Type>& p) {
-        auto itrHandle = params.find(p.name());
-        if (itrHandle == params.end()) {
-            return std::nullopt;
-        }
-
-        return ov::Any(itrHandle->second).as<Type>();
-    }
-}
-
 namespace intel_npu {
     
 Pipeline::Pipeline(const Config& config,
@@ -107,29 +95,97 @@ Pipeline::Pipeline(const Config& config,
                 continue;
             }
 
+            ze_graph_argument_value_tensor_t tensor_value;
+            ze_graph_argument_value_strides_t tensor_strides;
+
+            tensor_value.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_TENSOR;
+            tensor_value.pNext = nullptr;
+
+            tensor_strides.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_STRIDES;
+            tensor_strides.pNext = nullptr;
+
             if (input_tensors.at(io_index).size() > 1) {
                 _logger.debug("Pipeline - set args for input index: %zu", io_index);
 
-                graph->set_argument_value(desc.idx, input_tensors.at(io_index).at(i)->data());
+                tensor_value.pTensor =  input_tensors.at(io_index).at(i)->data();
 
-                ++io_index;
-                continue;
+                if (input_tensors.at(io_index).at(i)->is_continuous()) {
+                    auto strides = input_tensors.at(io_index).at(i)->get_strides();
+                    auto stridesIt = strides.rbegin();
+                    auto byteWidth = *stridesIt;
+                    for (auto idx = 0; idx < 5; idx++) {
+                        if (idx < strides.size()) {
+                            tensor_strides.userStrides[idx] = static_cast<uint32_t>(*stridesIt / byteWidth);
+                            stridesIt++;
+                            std::cerr << "setting user strides on inputs idx = " << idx << " value " << tensor_strides.userStrides[idx] << std::endl;
+                        } else {
+                            tensor_strides.userStrides[idx] = 0;
+                        }
+                    }
+                    tensor_value.pNext = reinterpret_cast<void*>(&tensor_strides);
+                }
+            } else {
+                tensor_value.pTensor = static_cast<unsigned char*>(input_tensors.at(io_index).at(0)->data()) +
+                    (i * input_tensors.at(io_index).at(0)->get_byte_size()) / _number_of_command_lists;
+
+                if (input_tensors.at(io_index).at(0)->is_continuous()) {
+                    auto strides = input_tensors.at(io_index).at(0)->get_strides();
+                    auto stridesIt = strides.rbegin();
+                    auto byteWidth = *stridesIt;
+                    for (auto idx = 0; idx < 5; idx++) {
+                        if (idx < strides.size()) {
+                            tensor_strides.userStrides[idx] = static_cast<uint32_t>(*stridesIt / byteWidth);
+                            stridesIt++;
+                            std::cerr << "setting user strides on inputs idx = " << idx << " value " << tensor_strides.userStrides[idx] << std::endl;
+                        } else {
+                            tensor_strides.userStrides[idx] = 0;
+                        }
+                    }
+                    tensor_value.pNext = reinterpret_cast<void*>(&tensor_strides);
+                }
             }
 
             graph->set_argument_value(
                 desc.idx,
-                static_cast<unsigned char*>(input_tensors.at(io_index).at(0)->data()) +
-                    (i * input_tensors.at(io_index).at(0)->get_byte_size()) / _number_of_command_lists);
+                &tensor_value);
 
             ++io_index;
         }
 
         io_index = 0;
         for (const auto& desc : graph->get_output_descriptors()) {
+
+            ze_graph_argument_value_tensor_t tensor_value;
+            ze_graph_argument_value_strides_t tensor_strides;
+
+            tensor_value.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_TENSOR;
+            tensor_value.pNext = nullptr;
+
+            tensor_strides.stype = ZE_STRUCTURE_TYPE_GRAPH_ARGUMENT_STRIDES;
+            tensor_strides.pNext = nullptr;
+
+            tensor_value.pTensor = static_cast<unsigned char*>(output_tensors.at(io_index)->data()) +
+                    (i * output_tensors.at(io_index)->get_byte_size()) / _number_of_command_lists;
+
+            if (output_tensors.at(io_index)->is_continuous()) {
+                auto strides = output_tensors.at(io_index)->get_strides();
+                auto stridesIt = strides.rbegin();
+                auto byteWidth = *stridesIt;
+                for (auto idx = 0; idx < 5; idx++) {
+                    if (idx < strides.size()) {
+                        tensor_strides.userStrides[idx] = static_cast<uint32_t>(*stridesIt / byteWidth);
+                        stridesIt++;
+                        std::cerr << "setting user strides on inputs idx = " << idx << " value " << tensor_strides.userStrides[idx] << std::endl;
+                    } else {
+                        tensor_strides.userStrides[idx] = 0;
+                    }
+                }
+                tensor_value.pNext = reinterpret_cast<void*>(&tensor_strides);
+            }
+
             graph->set_argument_value(
                 desc.idx,
-                static_cast<unsigned char*>(output_tensors.at(io_index)->data()) +
-                    (i * output_tensors.at(io_index)->get_byte_size()) / _number_of_command_lists);
+                &tensor_value);
             ++io_index;
         }
 
