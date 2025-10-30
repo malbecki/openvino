@@ -204,8 +204,13 @@ template <>
 struct OptionPrinter<std::vector<int>> final {
     static std::string toString(const std::vector<int>& val) {
         std::stringstream ss;
+        bool isFirst = true;
         for (auto& arg : val) {
-            ss << arg << " ";
+            if (!isFirst) {
+                ss << ", ";
+                isFirst = true;
+            }
+            ss << arg;
         }
 
         return ss.str();

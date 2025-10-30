@@ -464,7 +464,7 @@ void maxPoolTest(ov::Core& core) {
     }
 }
 
-int main(int, char*) {
+int main(int, char**) {
 try {
     std::cout << "starting strided sample\n";
 
