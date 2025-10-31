@@ -27,6 +27,8 @@
 #include "openvino/runtime/common.hpp"
 #include "openvino/runtime/tensor.hpp"
 
+#include <iostream>
+
 namespace ov {
 
 /**
@@ -1370,20 +1372,21 @@ static constexpr Property<uint64_t, PropertyMutability::RW> key_cache_group_size
 static constexpr Property<uint64_t, PropertyMutability::RW> value_cache_group_size{"VALUE_CACHE_GROUP_SIZE"};
 
 inline std::ostream& operator<<(std::ostream& os, const std::vector<int>& args_with_dynamic_strides) {
-    bool isFirst = false;
-    for (auto& arg : args_with_dynamic_strides) {
-        if (!isFirst) {
-            os << ", ";
-            isFirst = true;
+    if (!args_with_dynamic_strides.empty()) {
+        std::size_t i = 0;
+        for (auto&& v : args_with_dynamic_strides) {
+            os << v;
+            if (i < (args_with_dynamic_strides.size() - 1))
+                os << ' ';
+            ++i;
         }
-        os << arg;
     }
     return os;
 }
 
 inline std::istream& operator>>(std::istream& is, std::vector<int>& args_with_dynamic_strides) {
     std::string arg;
-    while (std::getline(is, arg, ',')) {
+    while (std::getline(is, arg, ' ')) {
         args_with_dynamic_strides.push_back(std::stoi(arg));
     }
 
