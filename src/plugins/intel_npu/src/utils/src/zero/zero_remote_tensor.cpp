@@ -155,8 +155,10 @@ void ZeroRemoteTensor::allocate(const size_t bytes) {
                                                              utils::STANDARD_PAGE_SIZE,
                                                              _tensor_type == TensorType::INPUT ? true : false);
         _data = _host_memory->data();
-        std::cerr << "copying data to " << _data << "from " << _mem;
-        std::memcpy(_data, _mem, bytes);
+        if (_mem != nullptr) {
+            std::cerr << "copying data to " << _data << "from " << _mem;
+            std::memcpy(_data, _mem, bytes);
+        }
         break;
     }
     case MemType::SHARED_BUF: {
