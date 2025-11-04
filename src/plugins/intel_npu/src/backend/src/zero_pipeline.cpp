@@ -109,7 +109,7 @@ Pipeline::Pipeline(const Config& config,
 
                 tensor_value.pTensor =  input_tensors.at(io_index).at(i)->data();
 
-                if (input_tensors.at(io_index).at(i)->is_continuous()) {
+                if (!input_tensors.at(io_index).at(i)->is_continuous()) {
                     auto strides = input_tensors.at(io_index).at(i)->get_strides();
                     auto stridesIt = strides.rbegin();
                     auto byteWidth = *stridesIt;
@@ -128,7 +128,7 @@ Pipeline::Pipeline(const Config& config,
                 tensor_value.pTensor = static_cast<unsigned char*>(input_tensors.at(io_index).at(0)->data()) +
                     (i * input_tensors.at(io_index).at(0)->get_byte_size()) / _number_of_command_lists;
 
-                if (input_tensors.at(io_index).at(0)->is_continuous()) {
+                if (!input_tensors.at(io_index).at(0)->is_continuous()) {
                     auto strides = input_tensors.at(io_index).at(0)->get_strides();
                     auto stridesIt = strides.rbegin();
                     auto byteWidth = *stridesIt;
@@ -167,7 +167,7 @@ Pipeline::Pipeline(const Config& config,
             tensor_value.pTensor = static_cast<unsigned char*>(output_tensors.at(io_index)->data()) +
                     (i * output_tensors.at(io_index)->get_byte_size()) / _number_of_command_lists;
 
-            if (output_tensors.at(io_index)->is_continuous()) {
+            if (!output_tensors.at(io_index)->is_continuous()) {
                 auto strides = output_tensors.at(io_index)->get_strides();
                 auto stridesIt = strides.rbegin();
                 auto byteWidth = *stridesIt;
